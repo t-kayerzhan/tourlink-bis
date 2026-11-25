@@ -31,7 +31,7 @@ export default function App() {
         <Route path="dashboard" element={<Dashboard />} /><Route path="tours" element={<AgencyTours />} /><Route path="tours/new" element={<TourForm />} /><Route path="tours/:id/edit" element={<TourForm />} />
         <Route path="calendar" element={<CalendarPage />} /><Route path="bookings" element={<AgencyBookings />} /><Route path="customers" element={<Customers />} /><Route path="analytics" element={<Analytics />} /></Route>
       <Route path="admin" element={<Require kind="admin"><AdminShell /></Require>}>
-        <Route index element={<AdminOverview />} /><Route path="agencies" element={<AdminAgencies />} /><Route path="users" element={<AdminUsers />} /><Route path="tours" element={<AdminTours />} />
+        <Route index element={<AdminOverview />} /><Route path="agencies" element={<AdminAgencies />} /><Route path="users" element={<AdminUsers />} /><Route path="tours" element={<AdminTours />} /><Route path="tours/:id/edit" element={<TourForm />} />
         <Route path="destinations" element={<AdminDestinations />} /><Route path="bookings" element={<AdminBookings />} /><Route path="reviews" element={<AdminReviews />} /><Route path="audit" element={<AdminAudit />} /></Route>
       <Route path="*" element={<NotFound />} />
     </Route></Routes>

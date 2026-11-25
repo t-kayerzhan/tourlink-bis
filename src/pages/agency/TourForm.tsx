@@ -18,12 +18,13 @@ type StepDraft = { day_number: number; start_time: string; title: string; detail
 export default function TourForm() {
   const { id } = useParams(); const editing = !!id; const { t, i18n } = useTranslation(); const { agency, role } = useAuth(); const nav = useNavigate(); const toast = useToast(); const qc = useQueryClient();
   const [f, setF] = useState<typeof blank>(blank); const [errs, setErrs] = useState<Record<string, string>>({}); const [busy, setBusy] = useState(false); const [files, setFiles] = useState<File[]>([]); const [steps, setSteps] = useState<StepDraft[]>([]);
+  const [agencyId, setAgencyId] = useState<string>('');
   const dests = useQuery({ queryKey: ['dests'], queryFn: async () => (await supabase.from('destinations').select('*').order('country').order('city')).data as Destination[] });
   const load = useQuery({ queryKey: ['edit-tour', id], enabled: editing, queryFn: async () => {
     const [t1, st, im, dt] = await Promise.all([supabase.from('tours').select('*').eq('id', id!).maybeSingle(), supabase.from('itinerary_steps').select('*').eq('tour_id', id!).order('day_number').order('step_order'),
       supabase.from('tour_images').select('*').eq('tour_id', id!).order('position'), supabase.from('tour_dates').select('*').eq('tour_id', id!).order('start_date')]);
     return { tour: t1.data, steps: st.data as Step[], images: im.data as TourImage[], dates: dt.data as TourDate[] }; } });
-  useEffect(() => { const d = load.data; if (!d?.tour) return; const x = d.tour; setF({ title: x.title, description: x.description, destination_id: x.destination_id, category: x.category, duration_days: x.duration_days, price_kzt: Number(x.price_kzt), meeting_point: x.meeting_point ?? '', latitude: x.latitude ?? '', longitude: x.longitude ?? '', included: x.included, excluded: x.excluded, status: x.status });
+  useEffect(() => { const d = load.data; if (!d?.tour) return; const x = d.tour; setAgencyId(x.agency_id); setF({ title: x.title, description: x.description, destination_id: x.destination_id, category: x.category, duration_days: x.duration_days, price_kzt: Number(x.price_kzt), meeting_point: x.meeting_point ?? '', latitude: x.latitude ?? '', longitude: x.longitude ?? '', included: x.included, excluded: x.excluded, status: x.status });
     setSteps(d.steps.map((s) => ({ day_number: s.day_number, start_time: s.start_time?.slice(0, 5) ?? '', title: s.title, details: s.details }))); }, [load.data]);
 
   const schema = z.object({ title: z.string().trim().min(3, t('v_title')).max(120), description: z.string().max(5000), destination_id: z.string().min(1, t('v_destination')), category: z.enum(CATEGORIES),
@@ -32,24 +33,27 @@ export default function TourForm() {
   const pickDest = (did: string) => { const d = dests.data?.find((x) => x.id === did); setF((p) => ({ ...p, destination_id: did, latitude: p.latitude === '' && d?.latitude != null ? String(d.latitude) : p.latitude, longitude: p.longitude === '' && d?.longitude != null ? String(d.longitude) : p.longitude })); };
   function addFiles(list: FileList | null) { if (!list) return; const ok: File[] = []; for (const file of Array.from(list)) { if (!ALLOWED.includes(file.type)) { toast.err(t('img_type')); continue; } if (file.size > MAX) { toast.err(t('img_size')); continue; } ok.push(file); } setFiles((p) => [...p, ...ok]); }
   async function upload(tourId: string, start: number) {
-    for (let i = 0; i < files.length; i++) { const file = files[i]; const path = `${agency!.id}/${crypto.randomUUID()}.${EXT[file.type]}`;
+    const folder = agencyId || agency?.id;
+    if (!folder) throw new Error('No agency context for upload');
+    for (let i = 0; i < files.length; i++) { const file = files[i]; const path = `${folder}/${crypto.randomUUID()}.${EXT[file.type]}`;
       const up = await supabase.storage.from('tour-images').upload(path, file, { contentType: file.type, upsert: false }); if (up.error) throw up.error;
       const ins = await supabase.from('tour_images').insert({ tour_id: tourId, storage_path: path, alt_text: f.title.slice(0, 120), position: start + i }); if (ins.error) throw ins.error; }
   }
   async function save(e: React.FormEvent) {
     e.preventDefault(); if (busy) return; const r = schema.safeParse({ ...f, duration_days: Number(f.duration_days), price_kzt: Number(f.price_kzt), latitude: String(f.latitude), longitude: String(f.longitude) });
     if (!r.success) { setErrs(Object.fromEntries(r.error.issues.map((i) => [String(i.path[0]), i.message]))); toast.err(t('fix_errors')); return; } setErrs({});
-    if (!agency && role !== 'admin') return; setBusy(true);
+    if (!agency && role !== 'admin') return; if (editing && !agencyId) return; setBusy(true);
     try {
       const v = r.data; const row = { title: v.title, description: v.description, destination_id: v.destination_id, category: v.category, duration_days: v.duration_days, price_kzt: v.price_kzt, meeting_point: v.meeting_point || null, latitude: v.latitude === '' ? null : +v.latitude, longitude: v.longitude === '' ? null : +v.longitude, included: v.included, excluded: v.excluded, status: v.status };
       let tourId = id;
       if (editing) { const { error } = await supabase.from('tours').update(row).eq('id', id!); if (error) throw error; }
-      else { const { data, error } = await supabase.from('tours').insert({ ...row, agency_id: agency!.id }).select('id').single(); if (error) throw error; tourId = data.id; }
+      else { const { data, error } = await supabase.from('tours').insert({ ...row, agency_id: agency!.id }).select('id').single(); if (error) throw error; tourId = data.id; setAgencyId(agency!.id); }
       const cleanSteps = steps.filter((s) => s.title.trim()).map((s, i) => ({ tour_id: tourId, day_number: s.day_number, step_order: i + 1, start_time: s.start_time || null, title: s.title.trim(), details: s.details }));
       await supabase.from('itinerary_steps').delete().eq('tour_id', tourId!); if (cleanSteps.length) { const { error } = await supabase.from('itinerary_steps').insert(cleanSteps); if (error) throw error; }
       if (files.length) await upload(tourId!, load.data?.images.length ?? 0);
-      toast.ok(t('saved')); setFiles([]); qc.invalidateQueries({ queryKey: ['own-tours'] }); qc.invalidateQueries({ queryKey: ['edit-tour', tourId] });
-      if (!editing) nav(`/agency/tours/${tourId}/edit`, { replace: true });
+      toast.ok(t('saved')); setFiles([]); qc.invalidateQueries({ queryKey: ['own-tours'] }); qc.invalidateQueries({ queryKey: ['admin-tours'] }); qc.invalidateQueries({ queryKey: ['edit-tour', tourId] });
+      if (!editing && role === 'admin' && !agency) nav(`/admin/tours/${tourId}/edit`, { replace: true });
+      else if (!editing) nav(`/agency/tours/${tourId}/edit`, { replace: true });
     } catch (er) { toast.err(errMsg(er)); } finally { setBusy(false); }
   }
   async function delImage(im: TourImage) { const { error } = await supabase.from('tour_images').delete().eq('id', im.id); if (error) return toast.err(errMsg(error)); await supabase.storage.from('tour-images').remove([im.storage_path]); qc.invalidateQueries({ queryKey: ['edit-tour', id] }); }

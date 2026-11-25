@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Trash2, Plus } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { supabase, errMsg } from '../../lib/supabase';
 import type { Agency, Destination } from '../../lib/types';
@@ -52,7 +53,7 @@ export function AdminTours() {
   const q = useQuery({ queryKey: ['admin-tours', page], queryFn: async () => { const { data, error } = await supabase.from('tours').select('id,title,status,price_kzt,agencies(name),destinations(city)').order('created_at', { ascending: false }).range(page * PS, page * PS + PS); if (error) throw error; return data as unknown as { id: string; title: string; status: string; price_kzt: number; agencies: { name: string }; destinations: { city: string } }[]; } });
   async function set(id: string, status: string) { const { error } = await supabase.from('tours').update({ status }).eq('id', id); if (error) toast.err(errMsg(error)); else { toast.ok(t('updated')); qc.invalidateQueries({ queryKey: ['admin-tours'] }); } }
   return (<div><PageHeader title={t('ad_tours')} />{q.isLoading ? <Spinner /> : q.error ? <ErrorBox message={errMsg(q.error)} /> : <><Table head={['tour', 'agency', 'destination', 'price', 'status', '']}>{q.data!.slice(0, PS).map((r) => <Row key={r.id}><td className="td">{r.title}</td><td className="td">{r.agencies.name}</td><td className="td">{r.destinations.city}</td><td className="td">{kzt(r.price_kzt, i18n.language)}</td><td className="td"><StatusBadge s={r.status} /></td>
-    <td className="td"><div className="flex gap-1">{r.status !== 'published' && <button className="btn btn-forest !px-3 !py-1" onClick={() => set(r.id, 'published')}>{t('publish')}</button>}{r.status === 'published' && <button className="btn btn-ghost !px-3 !py-1" onClick={() => set(r.id, 'draft')}>{t('unpublish')}</button>}{r.status !== 'archived' && <button className="btn btn-danger !px-3 !py-1" onClick={() => set(r.id, 'archived')}>{t('archive')}</button>}</div></td></Row>)}</Table><Pager page={page} setPage={setPage} hasNext={(q.data?.length ?? 0) > PS} /></>}</div>);
+    <td className="td"><div className="flex gap-1"><Link className="btn btn-ghost !px-3 !py-1" to={`/admin/tours/${r.id}/edit`}><Pencil className="h-3.5 w-3.5" />{t('edit')}</Link>{r.status !== 'published' && <button className="btn btn-forest !px-3 !py-1" onClick={() => set(r.id, 'published')}>{t('publish')}</button>}{r.status === 'published' && <button className="btn btn-ghost !px-3 !py-1" onClick={() => set(r.id, 'draft')}>{t('unpublish')}</button>}{r.status !== 'archived' && <button className="btn btn-danger !px-3 !py-1" onClick={() => set(r.id, 'archived')}>{t('archive')}</button>}</div></td></Row>)}</Table><Pager page={page} setPage={setPage} hasNext={(q.data?.length ?? 0) > PS} /></>}</div>);
 }
 const blankD = { country: '', city: '', region: '', latitude: '', longitude: '' };
 export function AdminDestinations() {
