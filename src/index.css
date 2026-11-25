@@ -1,0 +1,22 @@
+@tailwind base; @tailwind components; @tailwind utilities;
+:root { --c-cream:250 245 235; --c-sand:238 230 214; --c-forest:31 61 47; --c-sage:164 184 156; --c-terra:196 105 66; --c-ink:34 45 38; --c-card:255 252 246; --c-mute:107 119 108; }
+.dark { --c-cream:20 28 24; --c-sand:32 44 37; --c-forest:15 30 22; --c-sage:110 138 112; --c-terra:219 128 88; --c-ink:238 233 221; --c-card:30 41 35; --c-mute:160 172 160; }
+@layer base { html { scroll-behavior: smooth; } body { @apply bg-cream text-ink font-sans antialiased; } h1,h2,h3 { @apply font-serif tracking-tight; } }
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-terra; }
+  .btn-primary { @apply bg-terra text-white hover:brightness-110 hover:-translate-y-0.5 shadow-soft; }
+  .btn-ghost { @apply border border-sage/60 text-ink hover:bg-sand; }
+  .btn-forest { @apply bg-forest text-white hover:brightness-125; }
+  .btn-danger { @apply border border-terra text-terra hover:bg-terra hover:text-white; }
+  .card { @apply rounded-2xl bg-card shadow-soft border border-sand; }
+  .input { @apply w-full rounded-xl border border-sage/60 bg-card px-3.5 py-2.5 text-sm text-ink placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-terra/60; }
+  .label { @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-mute; }
+  .chip { @apply inline-flex items-center rounded-full bg-sand px-2.5 py-0.5 text-xs font-medium text-ink; }
+  .section-dark { @apply bg-forest text-cream; }
+  .th { @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-mute; }
+  .td { @apply px-3 py-2.5 text-sm; }
+}
+.leaflet-container { font-family: inherit; border-radius: 1.25rem; }
+.cluster-pin { background: rgb(var(--c-forest)); color: #fff; border-radius: 9999px; display:flex; align-items:center; justify-content:center; font-weight:700; border:3px solid rgb(var(--c-cream)); box-shadow:0 4px 12px rgba(0,0,0,.3); }
+.tour-pin { background: rgb(var(--c-terra)); border-radius: 9999px; border:3px solid #fff; box-shadow:0 2px 8px rgba(0,0,0,.4); }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
