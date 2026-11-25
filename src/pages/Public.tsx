@@ -8,21 +8,141 @@ import { searchTours, emptyFilters } from '../lib/hooks';
 import { TourCard } from '../components/TourCard';
 import { Spinner, ErrorBox, Empty, PageHeader } from '../components/ui';
 
+
 export function Destinations() {
   const { t } = useTranslation();
-  const q = useQuery({ queryKey: ['dest-counts'], queryFn: async () => {
-    const [d, tr] = await Promise.all([supabase.from('destinations').select('*').order('country').order('city'), supabase.from('tours').select('destination_id').eq('status', 'published')]);
-    if (d.error) throw d.error; const c = new Map<string, number>(); tr.data?.forEach((x) => c.set(x.destination_id, (c.get(x.destination_id) ?? 0) + 1));
-    return (d.data as Destination[]).map((x) => ({ ...x, n: c.get(x.id) ?? 0 })); } });
-  if (q.isLoading) return <Spinner />; if (q.error) return <ErrorBox message={errMsg(q.error)} />;
-  const by = new Map<string, typeof q.data>(); q.data?.forEach((d) => by.set(d.country, [...(by.get(d.country) ?? []), d]));
+
+  const q = useQuery({
+    queryKey: ['dest-counts'],
+    queryFn: async () => {
+      const [d, tr] = await Promise.all([
+        supabase
+          .from('destinations')
+          .select('*')
+          .order('country')
+          .order('city'),
+
+        supabase
+          .from('tours')
+          .select('destination_id')
+          .eq('status', 'published'),
+      ]);
+
+      if (d.error) throw d.error;
+      if (tr.error) throw tr.error;
+
+      const c = new Map<string, number>();
+
+      tr.data?.forEach(x =>
+        c.set(
+          x.destination_id,
+          (c.get(x.destination_id) ?? 0) + 1
+        )
+      );
+
+      return (d.data as Destination[]).map(x => ({
+        ...x,
+        n: c.get(x.id) ?? 0,
+      }));
+    },
+  });
+
+  if (q.isLoading) return <Spinner />;
+
+  if (q.error) {
+    return <ErrorBox message={errMsg(q.error)} />;
+  }
+
+  const by = new Map<string, typeof q.data>();
+
+  q.data?.forEach(d =>
+    by.set(d.country, [
+      ...(by.get(d.country) ?? []),
+      d,
+    ])
+  );
+
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10"><PageHeader title={t('nav_destinations')} sub={t('dest_sub')} />
-      {[...by.entries()].map(([country, ds]) => (<section key={country} className="mb-8"><h2 className="mb-3 text-3xl">{country}</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{ds!.map((d) => (<Link key={d.id} to={`/tours?country=${encodeURIComponent(d.country)}&city=${encodeURIComponent(d.city)}`} className="card p-4 transition hover:-translate-y-1"><p className="flex items-center gap-1 font-serif text-2xl"><MapPin className="h-4 w-4 text-terra" />{d.city}</p><p className="text-xs text-mute">{d.region}</p><p className="mt-2 text-sm">{t('tours_n', { count: d.n })}</p></Link>))}</div></section>))}
+    <div className="mx-auto max-w-7xl px-4 py-10">
+
+      <PageHeader
+        title={t('nav_destinations')}
+        sub={t('dest_sub')}
+      />
+
+      {[...by.entries()].map(([country, ds]) => (
+        <section key={country} className="mb-8">
+
+          <h2 className="mb-3 text-3xl">
+            {country}
+          </h2>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+            {ds!.map(d => {
+              const photoUrl = d.image_path
+                ? supabase.storage
+                    .from('destination-images')
+                    .getPublicUrl(d.image_path).data.publicUrl
+                : null;
+
+              return (
+                <Link
+                  key={d.id}
+                  to={`/tours?country=${encodeURIComponent(d.country)}&city=${encodeURIComponent(d.city)}`}
+                  className="card overflow-hidden transition hover:-translate-y-1"
+                >
+
+                  <div className="relative aspect-[16/10] overflow-hidden bg-sand">
+
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <MapPin className="h-10 w-10 text-terra opacity-50" />
+                    </div>
+
+                    {photoUrl && (
+                      <img
+                        src={photoUrl}
+                        alt={d.city}
+                        loading="lazy"
+                        className="relative h-full w-full object-cover"
+                        onError={e => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    )}
+
+                  </div>
+
+                  <div className="p-4">
+
+                    <p className="flex items-center gap-1 font-serif text-2xl">
+                      <MapPin className="h-4 w-4 text-terra" />
+                      {d.city}
+                    </p>
+
+                    <p className="text-xs text-mute">
+                      {d.region}
+                    </p>
+
+                    <p className="mt-2 text-sm">
+                      {t('tours_n', { count: d.n })}
+                    </p>
+
+                  </div>
+
+                </Link>
+              );
+            })}
+
+          </div>
+
+        </section>
+      ))}
+
     </div>
   );
 }
+
 export function AgencyPublic() {
   const { id = '' } = useParams(); const { t } = useTranslation();
   const a = useQuery({ queryKey: ['agency', id], queryFn: async () => (await supabase.from('agencies').select('*').eq('id', id).maybeSingle()).data as Agency | null });
