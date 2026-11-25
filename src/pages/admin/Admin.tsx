@@ -56,9 +56,437 @@ export function AdminTours() {
     <td className="td"><div className="flex gap-1"><Link className="btn btn-ghost !px-3 !py-1" to={`/admin/tours/${r.id}/edit`}><Pencil className="h-3.5 w-3.5" />{t('edit')}</Link>{r.status !== 'published' && <button className="btn btn-forest !px-3 !py-1" onClick={() => set(r.id, 'published')}>{t('publish')}</button>}{r.status === 'published' && <button className="btn btn-ghost !px-3 !py-1" onClick={() => set(r.id, 'draft')}>{t('unpublish')}</button>}{r.status !== 'archived' && <button className="btn btn-danger !px-3 !py-1" onClick={() => set(r.id, 'archived')}>{t('archive')}</button>}</div></td></Row>)}</Table><Pager page={page} setPage={setPage} hasNext={(q.data?.length ?? 0) > PS} /></>}</div>);
 }
 const blankD = { country: '', city: '', region: '', latitude: '', longitude: '' };
+
 export function AdminDestinations() {
-  const { t } = useTranslation(); const qc = useQueryClient(); const toast = useToast(); const [edit, setEdit] = useState<(typeof blankD & { id?: string }) | null>(null); const [del, setDel] = useState<string | null>(null); const [err, setErr] = useState('');
-  const q = useQuery({ queryKey: ['dests'], queryFn: async () => { const { data, error } = await supabase.from('destinations').select('*').order('country').order('city'); if (error) throw error; return data as Destination[]; } });
+  const { t, i18n } = useTranslation();
+  const qc = useQueryClient();
+  const toast = useToast();
+
+  const ru = i18n.language.startsWith('ru');
+
+  const [edit, setEdit] = useState<
+    (typeof blankD & {
+      id?: string;
+      image_path?: string | null;
+    }) | null
+  >(null);
+
+  const [del, setDel] = useState<string | null>(null);
+  const [err, setErr] = useState('');
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const q = useQuery({
+    queryKey: ['dests'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('destinations')
+        .select('*')
+        .order('country')
+        .order('city');
+
+      if (error) throw error;
+
+      return data as Destination[];
+    },
+  });
+
+  function getPhotoUrl(path: string) {
+    return supabase.storage
+      .from('destination-images')
+      .getPublicUrl(path).data.publicUrl;
+  }
+
+  function refresh() {
+    qc.invalidateQueries({ queryKey: ['dests'] });
+    qc.invalidateQueries({ queryKey: ['dest-counts'] });
+  }
+
+  function openEditor(d?: Destination) {
+    setErr('');
+    setPhoto(null);
+    setRemovePhoto(false);
+
+    if (d) {
+      setEdit({
+        id: d.id,
+        country: d.country,
+        city: d.city,
+        region: d.region,
+        latitude: String(d.latitude ?? ''),
+        longitude: String(d.longitude ?? ''),
+        image_path: d.image_path ?? null,
+      });
+    } else {
+      setEdit({
+        ...blankD,
+        image_path: null,
+      });
+    }
+  }
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!edit || saving) return;
+
+    const d = edit;
+
+    const lat = d.latitude === '' ? null : Number(d.latitude);
+    const lng = d.longitude === '' ? null : Number(d.longitude);
+
+    if (
+      d.country.trim().length < 2 ||
+      d.city.trim().length < 2
+    ) {
+      return setErr(t('v_name'));
+    }
+
+    if (
+      (lat !== null &&
+        (!Number.isFinite(lat) || lat < -90 || lat > 90)) ||
+      (lng !== null &&
+        (!Number.isFinite(lng) || lng < -180 || lng > 180))
+    ) {
+      return setErr(t('v_lat'));
+    }
+
+    setSaving(true);
+    setErr('');
+
+    const id = d.id ?? crypto.randomUUID();
+    const oldPath = d.image_path ?? null;
+
+    let imagePath = removePhoto ? null : oldPath;
+    let uploadedPath: string | null = null;
+
+    try {
+      if (photo) {
+        const allowedTypes = [
+          'image/jpeg',
+          'image/png',
+          'image/webp',
+        ];
+
+        if (!allowedTypes.includes(photo.type)) {
+          throw new Error(
+            ru ? 'Выберите JPG, PNG или WEBP' :
+              'Choose a JPG, PNG or WEBP image'
+          );
+        }
+
+        if (photo.size > 5 * 1024 * 1024) {
+          throw new Error(
+            ru ? 'Максимальный размер — 5 МБ' :
+              'Maximum image size is 5 MB'
+          );
+        }
+
+        const ext =
+          photo.type === 'image/png' ? 'png' :
+          photo.type === 'image/webp' ? 'webp' : 'jpg';
+
+        const path =
+          `${id}/${crypto.randomUUID()}.${ext}`;
+
+        const { error: uploadError } =
+          await supabase.storage
+            .from('destination-images')
+            .upload(path, photo, {
+              contentType: photo.type,
+              upsert: false,
+            });
+
+        if (uploadError) throw uploadError;
+
+        uploadedPath = path;
+        imagePath = path;
+      }
+
+      const row = {
+        country: d.country.trim(),
+        city: d.city.trim(),
+        region: d.region.trim(),
+        latitude: lat,
+        longitude: lng,
+        image_path: imagePath,
+      };
+
+      const result = d.id
+        ? await supabase
+            .from('destinations')
+            .update(row)
+            .eq('id', d.id)
+            .select('id')
+            .single()
+        : await supabase
+            .from('destinations')
+            .insert({ id, ...row })
+            .select('id')
+            .single();
+
+      if (result.error) throw result.error;
+
+      // Database save succeeded.
+      uploadedPath = null;
+
+      if (oldPath && oldPath !== imagePath) {
+        const { error: cleanupError } =
+          await supabase.storage
+            .from('destination-images')
+            .remove([oldPath]);
+
+        if (cleanupError) {
+          console.warn(cleanupError);
+        }
+      }
+
+      setEdit(null);
+      setPhoto(null);
+      setRemovePhoto(false);
+
+      toast.ok(t('saved'));
+      refresh();
+
+    } catch (error) {
+      if (uploadedPath) {
+        await supabase.storage
+          .from('destination-images')
+          .remove([uploadedPath]);
+      }
+
+      setErr(errMsg(error));
+
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove() {
+    const id = del!;
+    setDel(null);
+
+    const destination = q.data?.find(d => d.id === id);
+
+    const { error } = await supabase
+      .from('destinations')
+      .delete()
+      .eq('id', id)
+      .select('id')
+      .single();
+
+    if (error) {
+      toast.err(
+        error.code === '23503'
+          ? t('delete_blocked_dest')
+          : errMsg(error)
+      );
+
+      return;
+    }
+
+    if (destination?.image_path) {
+      const { error: cleanupError } =
+        await supabase.storage
+          .from('destination-images')
+          .remove([destination.image_path]);
+
+      if (cleanupError) console.warn(cleanupError);
+    }
+
+    toast.ok(t('deleted'));
+    refresh();
+  }
+
+  const f = (k: keyof typeof blankD) => (
+    <input
+      className="input"
+      value={edit?.[k] ?? ''}
+      disabled={saving}
+      onChange={e =>
+        setEdit({ ...edit!, [k]: e.target.value })
+      }
+    />
+  );
+
+  return (
+    <div>
+      <PageHeader
+        title={t('ad_destinations')}
+        right={
+          <button
+            className="btn btn-primary"
+            onClick={() => openEditor()}
+          >
+            <Plus className="h-4 w-4" />
+            {t('add')}
+          </button>
+        }
+      />
+
+      {q.isLoading ? (
+        <Spinner />
+      ) : q.error ? (
+        <ErrorBox message={errMsg(q.error)} />
+      ) : (
+        <Table
+          head={['country', 'city', 'region', 'coords', '']}
+        >
+          {q.data!.map(d => (
+            <Row key={d.id}>
+              <td className="td">{d.country}</td>
+
+              <td className="td">
+                <div className="flex items-center gap-3">
+                  {d.image_path && (
+                    <img
+                      src={getPhotoUrl(d.image_path)}
+                      alt={d.city}
+                      className="h-12 w-16 rounded-lg object-cover"
+                    />
+                  )}
+
+                  {d.city}
+                </div>
+              </td>
+
+              <td className="td">{d.region}</td>
+
+              <td className="td text-xs">
+                {d.latitude}, {d.longitude}
+              </td>
+
+              <td className="td">
+                <div className="flex gap-1">
+                  <button
+                    aria-label={t('edit')}
+                    className="btn btn-ghost !px-2 !py-1"
+                    onClick={() => openEditor(d)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+
+                  <button
+                    aria-label={t('delete')}
+                    className="btn btn-danger !px-2 !py-1"
+                    onClick={() => setDel(d.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </td>
+            </Row>
+          ))}
+        </Table>
+      )}
+
+      <Modal
+        open={!!edit}
+        onClose={() => {
+          if (!saving) setEdit(null);
+        }}
+        title={t('ad_destinations')}
+      >
+        <form onSubmit={save} className="space-y-3">
+
+          <Field label={t('country')}>
+            {f('country')}
+          </Field>
+
+          <Field label={t('city')}>
+            {f('city')}
+          </Field>
+
+          <Field label={t('region')}>
+            {f('region')}
+          </Field>
+
+          <div className="grid grid-cols-2 gap-2">
+            <Field label={t('latitude')}>
+              {f('latitude')}
+            </Field>
+
+            <Field label={t('longitude')}>
+              {f('longitude')}
+            </Field>
+          </div>
+
+          <Field
+            label={ru ? 'Фото направления' : 'Destination photo'}
+          >
+            {edit?.image_path && !removePhoto && (
+              <div className="mb-3 space-y-2">
+                <img
+                  src={getPhotoUrl(edit.image_path)}
+                  alt={edit.city}
+                  className="h-40 w-full rounded-xl object-cover"
+                />
+
+                <button
+                  type="button"
+                  disabled={saving}
+                  className="btn btn-danger"
+                  onClick={() => {
+                    setRemovePhoto(true);
+                    setPhoto(null);
+                  }}
+                >
+                  {ru ? 'Удалить фото' : 'Remove photo'}
+                </button>
+              </div>
+            )}
+
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="input"
+              disabled={saving}
+              onChange={e => {
+                setPhoto(e.target.files?.[0] ?? null);
+              }}
+            />
+
+            {photo && (
+              <p className="mt-2 text-sm">
+                {photo.name}
+              </p>
+            )}
+
+            <p className="mt-1 text-xs text-mute">
+              JPG, PNG, WEBP — max 5 MB
+            </p>
+          </Field>
+
+          {err && (
+            <p className="text-sm text-terra" role="alert">
+              {err}
+            </p>
+          )}
+
+          <button
+            className="btn btn-primary w-full"
+            disabled={saving}
+          >
+            {saving
+              ? (ru ? 'Сохранение...' : 'Saving...')
+              : t('save')}
+          </button>
+
+        </form>
+      </Modal>
+
+      <Confirm
+        open={!!del}
+        title={t('delete')}
+        text={t('delete_dest_text')}
+        onYes={remove}
+        onNo={() => setDel(null)}
+      />
+    </div>
+  );
+}
+
   async function save(e: React.FormEvent) { e.preventDefault(); const d = edit!; const lat = d.latitude === '' ? null : +d.latitude, lng = d.longitude === '' ? null : +d.longitude;
     if (d.country.trim().length < 2 || d.city.trim().length < 2) return setErr(t('v_name')); if ((lat != null && (lat < -90 || lat > 90)) || (lng != null && (lng < -180 || lng > 180))) return setErr(t('v_lat'));
     const row = { country: d.country.trim(), city: d.city.trim(), region: d.region.trim(), latitude: lat, longitude: lng }; const { error } = d.id ? await supabase.from('destinations').update(row).eq('id', d.id) : await supabase.from('destinations').insert(row);
