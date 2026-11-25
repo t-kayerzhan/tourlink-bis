@@ -5,7 +5,15 @@ export type PaymentStatus = 'unpaid' | 'paid_demo' | 'refunded_demo';
 export const CATEGORIES = ['nature', 'adventure', 'culture', 'family', 'relaxation', 'city'] as const;
 export interface Profile { id: string; full_name: string; preferred_language: 'en' | 'ru'; theme: 'light' | 'dark'; is_suspended: boolean }
 export interface Agency { id: string; owner_id: string | null; name: string; description: string; contact_email: string | null; status: AgencyStatus; verified_at: string | null; created_at: string }
-export interface Destination { id: string; country: string; city: string; region: string; latitude: number | null; longitude: number | null }
+export interface Destination {
+  id: string;
+  country: string;
+  city: string;
+  region: string;
+  latitude: number | null;
+  longitude: number | null;
+  image_path?: string | null;
+}
 export interface CatalogTour {
   id: string; title: string; description: string; category: string; duration_days: number; price_kzt: number; status: string;
   meeting_point: string | null; latitude: number | null; longitude: number | null; created_at: string;
