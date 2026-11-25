@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const url = 'https://ydmfqsyozgvjlziajblf.supabase.co';
+const key = 'sb_publishable_h7k0JGv-JMuuOXKQogHuOQ_glW0pDxG';
 export const isConfigured = Boolean(url && key && !url.includes('YOUR-PROJECT'));
 export const supabase = createClient(url || 'https://placeholder.supabase.co', key || 'placeholder', {
   auth: { persistSession: true, autoRefreshToken: true },
